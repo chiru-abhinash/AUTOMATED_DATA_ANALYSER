@@ -6,6 +6,138 @@ from fpdf import FPDF
 import io
 from PIL import Image
 from transformers import BlipProcessor, BlipForConditionalGeneration
+from modules.ml_algorithms import get_ml_suggestions  # Import ML suggestion function
+from modules.recommendations import generate_insights  # Import insights function
+
+# Initialize Hugging Face BLIP model for image captioning
+processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
+model = BlipForConditionalGeneration.from_pretrained("Salesforce/blip-image-captioning-base")
+
+def save_figure_as_image(fig):
+    """ Save a matplotlib figure as an image in memory. """
+    buf = io.BytesIO()
+    fig.savefig(buf, format='png', bbox_inches="tight")
+    buf.seek(0)
+    return buf.read()
+
+def generate_visualization(df):
+    """ Generate visualizations and return as images. """
+    figures = {}
+    numeric_df = df.select_dtypes(include=['number'])
+    
+    if numeric_df.shape[1] > 1:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.heatmap(numeric_df.corr(), annot=True, cmap="coolwarm", ax=ax)
+        ax.set_title("Correlation Heatmap")
+        figures['Correlation Heatmap'] = save_figure_as_image(fig)
+        plt.close(fig)
+    
+    for col in numeric_df.columns:
+        fig, ax = plt.subplots(figsize=(6, 3))
+        df[col].plot(kind='hist', bins=20, color='orange', alpha=0.7, ax=ax)
+        ax.set_title(f"Histogram - {col}")
+        figures[f'Histogram - {col}'] = save_figure_as_image(fig)
+        plt.close(fig)
+        
+        fig, ax = plt.subplots(figsize=(6, 3))
+        sns.boxplot(y=df[col], ax=ax)
+        ax.set_title(f"Boxplot - {col}")
+        figures[f'Boxplot - {col}'] = save_figure_as_image(fig)
+        plt.close(fig)
+    
+    return figures
+
+def generate_pdf_report(df):
+    """ Generate and save a PDF report with dataset insights. """
+    pdf = FPDF()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(200, 10, "Dataset Analysis Report", ln=True, align="C")
+    pdf.ln(10)
+    
+    # Generate ML Suggestions & Insights dynamically
+    insights_data = get_ml_suggestions(df)
+    dataset_description = insights_data["description"]
+    constraints = insights_data["constraints"]
+    ml_suggestions = insights_data["ml_suggestions"]
+
+    # Dataset Summary
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(200, 10, "Dataset Summary", ln=True)
+    pdf.set_font("Arial", "", 12)
+    pdf.multi_cell(0, 10, f"Total Rows: {df.shape[0]} | Total Columns: {df.shape[1]}")
+    pdf.ln(5)
+    
+    # Dataset Description
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(200, 10, "Dataset Description", ln=True)
+    pdf.set_font("Arial", "", 12)
+    pdf.multi_cell(0, 10, dataset_description.replace("**", ""))
+    pdf.ln(5)
+    
+    # Dataset Constraints
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(200, 10, "Dataset Constraints", ln=True)
+    pdf.set_font("Arial", "", 12)
+    for key, value in constraints.items():
+        pdf.cell(200, 10, f"- {key}: {value}", ln=True)
+    pdf.ln(5)
+    
+    # ML Suggestions Section
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(200, 10, "Suggested Machine Learning Algorithms", ln=True)
+    pdf.set_font("Arial", "", 12)
+    pdf.multi_cell(0, 10, ml_suggestions.replace("**", "").replace("*", "-"))
+    pdf.ln(5)
+
+    # Visualizations
+    pdf.set_font("Arial", "B", 14)
+    pdf.cell(200, 10, "Visualizations", ln=True)
+    pdf.ln(5)
+    
+    figures = generate_visualization(df)
+    for title, img_data in figures.items():
+        pdf.cell(200, 10, title, ln=True)
+        img = Image.open(io.BytesIO(img_data))
+        img_path = f"temp_{title}.png"
+        img.save(img_path)
+        pdf.image(img_path, x=10, w=180)
+        pdf.ln(5)
+    
+    # Save the PDF
+    pdf_path = "dataset_report.pdf"
+    pdf.output(pdf_path)
+    return pdf_path
+
+def show_reports_page():
+    """ Streamlit UI for generating and displaying reports. """
+    st.title("📊 Report Generation")
+    
+    if "user_data" not in st.session_state:
+        st.warning("Please upload a dataset first.")
+        return
+    
+    df = st.session_state.user_data
+    
+    if st.button("Generate Report"):
+        with st.spinner("Generating report, please wait..."):
+            report_path = generate_pdf_report(df)
+            st.success("Report generated successfully!")
+            with open(report_path, "rb") as file:
+                st.download_button("📥 Download Report", file, file_name="Dataset_Report.pdf", mime="application/pdf")
+
+
+
+'''
+import streamlit as st
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from fpdf import FPDF
+import io
+from PIL import Image
+from transformers import BlipProcessor, BlipForConditionalGeneration
 
 # Initialize Hugging Face BLIP model
 processor = BlipProcessor.from_pretrained("Salesforce/blip-image-captioning-base")
@@ -139,7 +271,7 @@ def show_reports_page():
                 st.download_button("📥 Download Report", file, file_name="Dataset_Report.pdf", mime="application/pdf")
 
 
-
+'''
 # import streamlit as st
 # import pandas as pd
 # import matplotlib.pyplot as plt
