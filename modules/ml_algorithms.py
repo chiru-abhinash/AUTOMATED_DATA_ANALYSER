@@ -222,3 +222,53 @@ def suggest_ml_algorithms(data):
     # Display the recommended ML algorithms
     st.subheader("### Recommended Machine Learning Algorithms:")
     st.write(recommendations)
+
+def get_ml_suggestions(data):
+    """
+    Analyzes the dataset and provides ML algorithm recommendations.
+
+    Parameters:
+        data (pd.DataFrame): The dataset uploaded by the user.
+
+    Returns:
+        dict: A dictionary containing dataset description, constraints, and recommended ML algorithms.
+    """
+
+    # Step 1: Generate dataset description
+    headers = list(data.columns)
+    sample_row = data.iloc[0].to_dict() if not data.empty else {}
+
+    prompt_desc = (
+        f"The dataset has the following columns: {', '.join(headers)}. "
+        f"Here is a sample row: {sample_row}. "
+        "Describe the dataset's purpose, potential use cases, and characteristics."
+    )
+
+    chat_session = model.start_chat(history=[])
+    response_desc = chat_session.send_message(prompt_desc)
+    dataset_description = response_desc.text if response_desc and response_desc.text else "No description available."
+
+    # Step 2: Define dataset constraints based on characteristics
+    constraints = {
+        "data_spread": "High variability" if data.select_dtypes(include='number').std().mean() > 1 else "Low variability",
+        "memory": "Limited" if len(data) > 100000 else "Sufficient",
+        "feasibility": "Small" if data.shape[1] < 10 else "Large",
+    }
+
+    # Step 3: Recommend ML algorithms based on dataset analysis
+    prompt_ml = (
+        f"Given the dataset described as: '{dataset_description}', with {data.shape[0]} rows and {data.shape[1]} columns, "
+        f"and considering the constraints: {constraints}, recommend suitable machine learning algorithms. "
+        "Explain why these algorithms are suitable and what results they can achieve."
+    )
+
+    response_ml = chat_session.send_message(prompt_ml)
+    ml_recommendations = response_ml.text if response_ml and response_ml.text else "No recommendations available."
+
+    return {
+        "description": dataset_description,
+        "constraints": constraints,
+        "ml_suggestions": ml_recommendations
+    }
+
+
